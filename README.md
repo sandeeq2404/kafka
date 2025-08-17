@@ -31,10 +31,10 @@ A minimal end‑to‑end example that spins up **Kafka + Zookeeper** via Docker,
 ├─ docker-compose.yml
 ├─ producer.py
 ├─ consumer.py
-└─ requirements.txt   # optional convenience file (kafka-python)
+└─ requirements.txt  
 ```
 
-**requirements.txt** (optional):
+**requirements.txt** 
 
 ```
 kafka-python>=2.0.2
@@ -71,92 +71,9 @@ services:
       - zookeeper
 ```
 
-> 💡 Why this version? The original file mixed **KRaft** and **Zookeeper** settings. For simplicity, this uses **Zookeeper mode only**, which is perfect for a single-node local dev setup.
 
----
 
-## 🧪 Python Apps
 
-**producer.py**
-
-```python
-import json
-import random
-import time
-from kafka import KafkaProducer
-
-# 1. Connect to Kafka broker
-producer = KafkaProducer(
-    bootstrap_servers='localhost:9092',
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
-
-categories = ['electronics', 'books', 'clothing', 'home']
-order_id = 1
-
-def generate_order():
-    global order_id
-    order = {
-        'order_id': order_id,
-        'category': random.choice(categories),
-        'amount': round(random.uniform(10.0, 200.0), 2)
-    }
-    order_id += 1
-    return order
-
-if __name__ == '__main__':
-    print("Starting producer. Press Ctrl+C to stop.")
-    try:
-        while True:
-            order = generate_order()
-            producer.send('orders', value=order)
-            print(f"Sent order: {order}")
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Producer stopped.")
-        producer.close()
-```
-
-**consumer.py**
-
-```python
-import json
-from kafka import KafkaConsumer
-from collections import defaultdict
-
-# 1. Connect to Kafka and subscribe
-consumer = KafkaConsumer(
-    'orders',
-    bootstrap_servers='localhost:9092',
-    auto_offset_reset='earliest',
-    enable_auto_commit=True,
-    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-)
-
-# 2. Aggregation state
-category_counts = defaultdict(int)
-category_totals = defaultdict(float)
-
-print("Starting consumer. Listening for orders...")
-
-for msg in consumer:
-    order = msg.value
-    cat = order['category']
-    amt = order['amount']
-
-    # Update counts and totals
-    category_counts[cat] += 1
-    category_totals[cat] += amt
-
-    # Compute average per category
-    avg = category_totals[cat] / category_counts[cat]
-
-    # Display running stats
-    print(f"Category: {cat} | Count: {category_counts[cat]} | "
-          f"Total: ${category_totals[cat]:.2f} | Avg: ${avg:.2f}")
-```
-
----
 
 ## 🏃‍♂️ Quick Start
 
@@ -166,28 +83,11 @@ for msg in consumer:
 # From the project folder
 docker compose up -d
 
-# Watch logs until Kafka is ready (Ctrl+C to stop viewing)
-docker logs -f $(docker ps --filter name=_kafka_ --format {{.ID}})
-```
+#Create topics mannually is recommended
+docker exec -it <kafka_container> bash
+kafka-topics.sh --create --topic orders --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
 
-### 2) (Optional but recommended) Create the topic explicitly
 
-Some setups auto-create topics on first produce; to be explicit:
-
-```bash
-# Get the Kafka container name
-KAFKA_CID=$(docker ps --filter name=_kafka_ --format {{.ID}})
-
-# Create 'orders' topic with 1 partition, RF=1
-docker exec -it "$KAFKA_CID" /opt/bitnami/kafka/bin/kafka-topics.sh \
-  --create --topic orders \
-  --bootstrap-server localhost:9092 \
-  --partitions 1 --replication-factor 1
-
-# Verify
-docker exec -it "$KAFKA_CID" /opt/bitnami/kafka/bin/kafka-topics.sh \
-  --list --bootstrap-server localhost:9092
-```
 
 ### 3) Set up Python environment
 
@@ -199,8 +99,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
-# or
-pip install kafka-python
+
 ```
 
 ### 4) Run the consumer (terminal A)
@@ -295,24 +194,6 @@ docker compose down -v
 
 ---
 
-## 🔭 Next Steps / Ideas
-
-* Add **keys** to messages (e.g., `order_id` as key) for partitioning
-* Add a **schema** (Avro/JSONSchema) and a **Schema Registry**
-* Containerize the Python apps
-* Move to **KRaft** mode or a multi-broker cluster
-* Use **async** producer with delivery callbacks
-* Persist consumer aggregates to **Redis/Postgres**
-
----
-
-## 📝 Notes on Security & Production
-
-* PLAINTEXT listeners are fine for local dev. For prod, use **SASL/SSL**, authentication, and authorization.
-* Pin image versions (e.g., `bitnami/kafka:3.7.x`) for reproducibility.
-* Add observability: **Prometheus/JMX**, logs, and metrics.
-
----
 
 ## 💡 FAQ
 
